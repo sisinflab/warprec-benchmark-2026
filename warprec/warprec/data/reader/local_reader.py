@@ -1,0 +1,147 @@
+from typing import List, Dict, Tuple, Optional, Any
+from pathlib import Path
+
+import pandas as pd
+import joblib
+import narwhals as nw
+from narwhals.dataframe import DataFrame
+
+from warprec.data.reader.base_reader import Reader
+
+
+class LocalReader(Reader):
+    """This class extends Reader and handles data reading from a local machine."""
+
+    def read_tabular(
+        self,
+        local_path: str,
+        column_names: Optional[List[str]] = None,
+        dtypes: Optional[Dict[str, str]] = None,
+        sep: str = "\t",
+        header: bool = True,
+        *args: Any,
+        **kwargs: Any,
+    ) -> DataFrame[Any]:
+        """Reads tabular data (e.g., CSV, TSV) from a local file.
+
+        The file content is read into memory and then processed robustly by the
+        parent's stream processor.
+
+        Args:
+            local_path (str): The local file path to the tabular data.
+            column_names (Optional[List[str]]): A list of expected column names.
+            dtypes (Optional[Dict[str, str]]): A dict of data types corresponding to `column_names`.
+            sep (str): The delimiter character used in the file. Defaults to tab `\t`.
+            header (bool): A boolean indicating if the file has a header row. Defaults to `True`.
+            *args (Any): The additional arguments.
+            **kwargs (Any): The additional keyword arguments.
+
+        Returns:
+            DataFrame[Any]: A DataFrame containing the tabular data. Returns an empty DataFrame
+                if the blob is not found.
+        """
+        path = Path(local_path)
+        if not path.exists():
+            return nw.from_native(pd.DataFrame())
+
+        return self._process_tabular_data(
+            source=path,
+            sep=sep,
+            header=header,
+            desired_cols=column_names,
+            desired_dtypes=dtypes,
+        )
+
+    def read_parquet(
+        self,
+        local_path: str,
+        column_names: Optional[List[str]] = None,
+        *args: Any,
+        **kwargs: Any,
+    ) -> DataFrame[Any]:
+        """Reads data from a local parquet file.
+
+        Args:
+            local_path (str): The local file path to the parquet data.
+            column_names (Optional[List[str]]): A list of specific columns to read.
+            *args (Any): The additional arguments.
+            **kwargs (Any): The additional keyword arguments.
+
+        Returns:
+            DataFrame[Any]: A Narwhals DataFrame containing the data.
+        """
+        path = Path(local_path)
+        if not path.exists():
+            # Return empty compatible with the backend
+            return nw.from_native(pd.DataFrame())
+        return self._process_parquet_data(source=path, desired_cols=column_names)
+
+    def read_tabular_split(
+        self,
+        local_path: str,
+        column_names: Optional[List[str]],
+        dtypes: Optional[Dict[str, str]],
+        sep: str = "\t",
+        ext: str = ".tsv",
+        header: bool = True,
+        *args: Any,
+        **kwargs: Any,
+    ) -> Tuple[
+        DataFrame[Any],
+        Optional[List[Tuple[DataFrame[Any], DataFrame[Any]]] | DataFrame[Any]],
+        DataFrame[Any],
+    ]:
+        return super()._process_tabular_split(
+            base_location=local_path,
+            column_names=column_names,
+            dtypes=dtypes,
+            sep=sep,
+            ext=ext,
+            header=header,
+            is_remote=False,  # Specify local path handling
+        )
+
+    def read_parquet_split(
+        self,
+        local_path: str,
+        column_names: Optional[List[str]] = None,
+        ext: str = ".parquet",
+        *args: Any,
+        **kwargs: Any,
+    ) -> Tuple[
+        DataFrame[Any],
+        Optional[List[Tuple[DataFrame[Any], DataFrame[Any]]] | DataFrame[Any]],
+        DataFrame[Any],
+    ]:
+        return super()._process_parquet_split(
+            base_location=local_path,
+            column_names=column_names,
+            ext=ext,
+            is_remote=False,  # Specify local path handling
+        )
+
+    def read_json(self, *args, **kwargs):
+        """This method will read the json data from the source."""
+        raise NotImplementedError
+
+    def read_json_split(self, *args, **kwargs):
+        """This method will read the json split data from the source."""
+        raise NotImplementedError
+
+    def load_model_state(self, local_path: str) -> dict:
+        """Loads a model state from a given path.
+
+        Args:
+            local_path (str): The path to the model state file.
+
+        Returns:
+            dict: The deserialized information of the model (e.g., weights, hyperparameters)
+                loaded using `joblib`.
+
+        Raises:
+            FileNotFoundError: If the model state was not found in the provided path.
+        """
+        path = Path(local_path)
+        if path.exists():
+            return joblib.load(path)
+        raise FileNotFoundError(f"Model state not found in {path}")

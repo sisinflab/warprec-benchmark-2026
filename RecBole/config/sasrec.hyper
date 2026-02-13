@@ -1,0 +1,8 @@
+hidden_size choice [64, 128, 256]
+n_layers choice [2, 3]
+loss_type choice ['BPR']
+inner_size choice [512]
+n_heads choice [8]
+hidden_dropout_prob choice [0.1]
+attn_dropout_prob choice [0.1]
+layer_norm_eps choice [1e-4]

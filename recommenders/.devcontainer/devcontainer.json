@@ -1,0 +1,54 @@
+{
+    "name": "Recommenders",
+    "build": {
+        "dockerfile": "../tools/docker/Dockerfile",
+        "context": "..",
+        "target": "deps",
+        "args": {
+            "COMPUTE": "cpu",
+            "PYTHON_VERSION": "3.11"
+        }
+    },
+    "customizations": {
+        "vscode": {
+            // Set default container specific settings.json values on container
+            // create
+            "settings": {
+                "[python]": {
+                    "editor.defaultFormatter": "ms-python.black-formatter",
+                    "editor.formatOnSave": true,
+                    "editor.codeActionsOnSave": {
+                        "source.organizeImports": "explicit"
+                    }
+                },
+                "isort.args": ["--profile", "black"],
+                "python.analysis.autoImportCompletions": true,
+                // uv virtual environment path
+                "python.defaultInterpreterPath": "/root/.venvs/Recommenders/bin/python",
+                "python.testing.pytestEnabled": true,
+                // Test directory
+                "python.testing.pytestArgs": ["tests"]
+            },
+            // VS Code extensions to install on container create
+            "extensions": [
+                // https://marketplace.visualstudio.com/items?itemName=ms-python.black-formatter
+                "ms-python.black-formatter",
+                // https://marketplace.visualstudio.com/items?itemName=ms-python.isort
+                "ms-python.isort",
+                // https://marketplace.visualstudio.com/items?itemName=ms-python.mypy-type-checker
+                "ms-python.mypy-type-checker",
+                // https://marketplace.visualstudio.com/items?itemName=ms-python.pylint
+                "ms-python.pylint",
+                // https://marketplace.visualstudio.com/items?itemName=ms-python.python
+                "ms-python.python",
+                // https://marketplace.visualstudio.com/items?itemName=ms-toolsai.datawrangler
+                "ms-toolsai.datawrangler",
+                // https://marketplace.visualstudio.com/items?itemName=ms-toolsai.jupyter
+                "ms-toolsai.jupyter"
+            ]
+        }
+    },
+
+    // Install Java (Temurin) for Spark support and Recommenders in development mode after container create
+    "postCreateCommand": "bash -c 'apt-get update && apt-get install -y wget apt-transport-https gpg && wget -qO - https://packages.adoptium.net/artifactory/api/gpg/key/public | gpg --dearmor -o /usr/share/keyrings/adoptium.gpg && echo \"deb [signed-by=/usr/share/keyrings/adoptium.gpg] https://packages.adoptium.net/artifactory/deb $(. /etc/os-release && echo $VERSION_CODENAME) main\" | tee /etc/apt/sources.list.d/adoptium.list && apt-get update && apt-get install -y temurin-21-jdk && export JAVA_HOME=/usr/lib/jvm/temurin-21-jdk-amd64 && uv pip install -e .[dev,spark]'"
+}

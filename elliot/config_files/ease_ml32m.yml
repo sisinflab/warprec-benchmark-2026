@@ -1,0 +1,17 @@
+experiment:
+  dataset: movielens_32m
+  data_config:
+    strategy: dataset
+    dataset_path: ../../dataset/ml-32m/ratings.tsv
+  splitting:
+    test_splitting:
+        strategy: random_subsampling
+        test_ratio: 0.1
+  top_k: 10
+  evaluation:
+    cutoffs: [10]
+    simple_metrics: [nDCG,Precision,Recall,HR,MAP]
+  external_models_path: ../external/models/__init__.py
+  models:
+    EASER:
+      l2_norm: [100, 200, 500, 750, 1000, 2000]

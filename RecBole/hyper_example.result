@@ -1,0 +1,36 @@
+batch_size:8192, embedding_size:128, epochs:10, learning_rate:0.001, n_layers:3, reg_weight:0.001
+Valid result:
+ndcg@10 : 0.0487    precision@10 : 0.0096    recall@10 : 0.0956    hit@10 : 0.0956    map@10 : 0.0346
+Test result:
+ndcg@10 : 0.1941    precision@10 : 0.1614    recall@10 : 0.0962    hit@10 : 0.5734    map@10 : 0.1175
+
+batch_size:8192, embedding_size:256, epochs:10, learning_rate:0.001, n_layers:3, reg_weight:0.001
+Valid result:
+ndcg@10 : 0.0564    precision@10 : 0.011    recall@10 : 0.1102    hit@10 : 0.1102    map@10 : 0.0402
+Test result:
+ndcg@10 : 0.2124    precision@10 : 0.1739    recall@10 : 0.1113    hit@10 : 0.6037    map@10 : 0.1309
+
+batch_size:8192, embedding_size:64, epochs:10, learning_rate:0.001, n_layers:3, reg_weight:0.001
+Valid result:
+ndcg@10 : 0.0426    precision@10 : 0.0085    recall@10 : 0.0845    hit@10 : 0.0845    map@10 : 0.03
+Test result:
+ndcg@10 : 0.1772    precision@10 : 0.1491    recall@10 : 0.0849    hit@10 : 0.5467    map@10 : 0.1051
+
+batch_size:8192, embedding_size:256, epochs:10, learning_rate:0.001, n_layers:2, reg_weight:0.001
+Valid result:
+ndcg@10 : 0.0618    precision@10 : 0.0121    recall@10 : 0.1206    hit@10 : 0.1206    map@10 : 0.0441
+Test result:
+ndcg@10 : 0.2253    precision@10 : 0.1825    recall@10 : 0.1221    hit@10 : 0.6244    map@10 : 0.1401
+
+batch_size:8192, embedding_size:128, epochs:10, learning_rate:0.001, n_layers:2, reg_weight:0.001
+Valid result:
+ndcg@10 : 0.0554    precision@10 : 0.0108    recall@10 : 0.1081    hit@10 : 0.1081    map@10 : 0.0395
+Test result:
+ndcg@10 : 0.2098    precision@10 : 0.1721    recall@10 : 0.1092    hit@10 : 0.5999    map@10 : 0.1289
+
+batch_size:8192, embedding_size:64, epochs:10, learning_rate:0.001, n_layers:2, reg_weight:0.001
+Valid result:
+ndcg@10 : 0.048    precision@10 : 0.0094    recall@10 : 0.0941    hit@10 : 0.0941    map@10 : 0.0341
+Test result:
+ndcg@10 : 0.1924    precision@10 : 0.16    recall@10 : 0.0952    hit@10 : 0.571    map@10 : 0.1162
+

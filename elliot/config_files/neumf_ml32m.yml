@@ -1,0 +1,33 @@
+experiment:
+  dataset: movielens_32m
+  backend: tensorflow
+  data_config:
+    strategy: dataset
+    dataset_path: ../../dataset/ml-32m/ratings.tsv
+  splitting:
+    test_splitting:
+        strategy: random_subsampling
+        test_ratio: 0.1
+  top_k: 10
+  evaluation:
+    cutoffs: [10]
+    simple_metrics: [nDCG,Precision,Recall,HR,MAP]
+  # external_models_path: ../external/models/__init__.py
+  gpu: 0
+  models:
+    NeuMF:
+      meta:
+        validation_rate: 10
+      mf_factors: [64, 128, 256]
+      mlp_factors: 64
+      mlp_hidden_size: (128, 64, 32)
+      lr: 0.001
+      dropout: 0.1
+      m: [0, 1]
+      batch_eval: 1024
+      is_mf_train: True
+      is_mlp_train: True
+      epochs: 10
+      batch_size: 8192
+      
+      

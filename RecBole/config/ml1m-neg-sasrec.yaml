@@ -1,0 +1,39 @@
+data_path: ../dataset
+dataset: movielens-1m
+
+# Dataset config
+field_separator: ','
+load_col:
+  inter: [user_id, item_id, rating, timestamp]
+  user: [user_id]
+  item: [item_id]
+
+USER_ID_FIELD: user_id
+ITEM_ID_FIELD: item_id
+
+use_gpu: True
+gpu_id: 0
+
+seed: 42
+reproducibility: True
+
+# Training and evaluation config
+epochs: 10
+train_batch_size: 8192
+eval_batch_size: 1024
+stopping_step: 9999
+weight_decay: 0.0001
+
+train_neg_sample_args:
+  distribution: uniform
+  sample_num: 1
+
+eval_args:
+  split: {'RS': [0.9,0.00001,0.099999]}
+  order: TO
+  group_by: user
+  mode: 'full'
+
+metrics: [NDCG, Precision, Recall, Hit, MAP]
+topk: 10
+valid_metric: NDCG@10

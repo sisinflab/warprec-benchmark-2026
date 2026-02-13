@@ -1,0 +1,6 @@
+embedding_size choice [64, 128, 256]
+n_layers choice [2, 3]
+reg_weight choice [0.001]
+batch_size choice [8192]
+epochs choice [100]
+learning_rate choice [0.0001]

@@ -1,0 +1,6 @@
+mf_embedding_size choice [64, 128, 256]
+mlp_embedding_size choice [64]
+mlp_hidden_size choice ['[64, 32]']
+dropout_prob choice [0.1]
+mf_train choice [True]
+mlp_train choice [True]
