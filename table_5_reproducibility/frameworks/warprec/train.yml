@@ -1,0 +1,38 @@
+reader:
+  loading_strategy: dataset
+  data_type: transaction
+  reading_method: local
+  local_path: data/raw/movielens.csv
+  rating_type: explicit
+  sep: ","
+writer:
+  dataset_name: WarpRec_Reproducibility
+  writing_method: local
+  local_experiment_path: experiment/
+  save_split: True
+  split:
+    header: False # consumed by Elliot/RecBole without a header row
+  recommendation:
+    header: False # consumed by the cross-framework ProxyRecommender paths
+splitter:
+  test_splitting:
+    strategy: temporal_holdout
+    ratio: 0.1
+models:
+  ItemKNN:
+    meta:
+      save_recs: True
+    k: 10
+    similarity: cosine
+  LightGCN:
+    meta:
+      save_recs: True
+    embedding_size: 16
+    n_layers: 2
+    reg_weight: 0.001
+    batch_size: 2048
+    epochs: 1
+    learning_rate: 0.001
+evaluation:
+  top_k: [10]
+  metrics: [nDCG, Precision, Recall, MRR, MAP, Gini, ShannonEntropy]

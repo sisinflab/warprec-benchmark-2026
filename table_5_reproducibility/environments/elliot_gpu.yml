@@ -1,0 +1,29 @@
+# Elliot reproducibility environment (GPU variant, CUDA 11.8 via TensorFlow).
+# Same Python + Elliot pins as the CPU variant; only TF flavour differs.
+# TensorFlow 2.13 is the last release with first-class Python 3.8 support and
+# bundles its own CUDA 11.8 runtime via pip; no separate CUDA toolkit install
+# is required on Linux if an nvidia driver >= 520 is present.
+name: table_5_reproducibility_elliot
+channels:
+  - conda-forge
+dependencies:
+  - python=3.8
+  - pip=24.0
+  - setuptools=70.3.0
+  - wheel=0.43.0
+  - requests
+  - pip:
+    - PyYAML==6.0.1
+    - XlsxWriter==3.2.0
+    - hyperopt==0.2.5
+    - matplotlib==3.7.5
+    - openpyxl==3.1.5
+    - pandas==2.0.3
+    - pillow==10.4.0
+    - scikit-learn==1.3.2
+    - seaborn==0.13.2
+    - numpy==1.24.4
+    - scipy==1.10.1
+    - tqdm>=4.66.0
+    - tensorflow[and-cuda]==2.13.0
+    - git+https://github.com/sisinflab/elliot.git

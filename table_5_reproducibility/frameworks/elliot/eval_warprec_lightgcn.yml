@@ -1,0 +1,16 @@
+experiment:
+  dataset: ElliotWarpRecLightGCNRepr
+  data_config:
+    strategy: fixed
+    train_path: data/split/train.tsv
+    test_path: data/split/test.tsv
+  top_k: 10
+  evaluation:
+    cutoffs: [10]
+    simple_metrics: [nDCG, Precision, Recall, MRR, MAP, Gini, SEntropy]
+  gpu: 0
+  models:
+    ProxyRecommender:
+      meta:
+        save_recs: True
+      path: recs/warprec/LightGCN.tsv

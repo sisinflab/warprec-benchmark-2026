@@ -1,0 +1,20 @@
+# WarpRec reproducibility environment (GPU variant, CUDA 12.6).
+# This matches the stack used to produce the original Table 5 numbers:
+# Python 3.12 + cuda-toolkit 12.6 + torch 2.7.0+cu126 + ray 2.54+.
+# Use this YAML on a Linux box with an NVIDIA GPU (CUDA 12.6 drivers).
+name: table_5_reproducibility_warprec
+channels:
+  - conda-forge
+  - nvidia
+dependencies:
+  - python=3.12.11
+  - pip=25.0
+  - setuptools=80.9.0
+  - wheel=0.45.1
+  - cuda-toolkit=12.6
+  - pip:
+    - --extra-index-url https://download.pytorch.org/whl/cu126
+    - torch==2.7.0+cu126
+    - --find-links https://data.pyg.org/whl/torch-2.7.0+cu126.html
+    - torch-geometric==2.7.0
+    - warprec==1.3.0

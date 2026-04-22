@@ -1,0 +1,23 @@
+reader:
+  loading_strategy: dataset
+  data_type: transaction
+  reading_method: local
+  local_path: data/raw/movielens.csv
+  rating_type: explicit
+  sep: ","
+writer:
+  dataset_name: WarpRec_RecBole_ItemKNN_Reproducibility
+  writing_method: local
+  local_experiment_path: experiment/
+splitter:
+  test_splitting:
+    strategy: temporal_holdout
+    ratio: 0.1
+models:
+  ProxyRecommender:
+    recommendation_file: recs/recbole/ItemKNN.tsv
+    separator: "\t"
+    header: False
+evaluation:
+  top_k: [10]
+  metrics: [nDCG, Precision, Recall, MRR, MAP, Gini, ShannonEntropy]

@@ -1,0 +1,27 @@
+experiment:
+  dataset: ElliotRepr
+  data_config:
+    strategy: fixed
+    train_path: data/split/train.tsv
+    test_path: data/split/test.tsv
+  top_k: 10
+  evaluation:
+    cutoffs: [10]
+    simple_metrics: [nDCG, Precision, Recall, MRR, MAP, Gini, SEntropy]
+  gpu: 0
+  models:
+    ItemKNN:
+      meta:
+        save_recs: True
+      neighbors: 10
+      similarity: cosine
+      implementation: classical
+    LightGCN:
+      meta:
+        save_recs: True
+      lr: 0.001
+      epochs: 1
+      batch_size: 2048
+      factors: 16
+      l_w: 0.001
+      n_layers: 2

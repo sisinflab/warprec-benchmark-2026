@@ -1,0 +1,30 @@
+# RecBole reproducibility environment (GPU variant, CUDA 12.1).
+# Matches the CPU variant except for the torch wheels.
+name: table_5_reproducibility_recbole
+channels:
+  - conda-forge
+dependencies:
+  - python=3.9
+  - pip=24.0
+  - setuptools=70.3.0
+  - wheel=0.43.0
+  - pip:
+    - numpy==1.24.4
+    - scipy==1.10.1
+    - pandas==2.0.3
+    - scikit-learn==1.3.2
+    - hyperopt==0.2.5
+    - pyyaml>=5.1.0
+    - colorlog==4.7.2
+    - colorama==0.4.4
+    - tqdm>=4.48.2
+    - tensorboard>=2.5.0
+    - thop>=0.1.1.post2207130030
+    - ray==2.6.3
+    - tabulate>=0.8.10
+    - plotly>=4.0.0
+    - texttable>=0.9.0
+    - psutil>=5.9.0
+    - --extra-index-url https://download.pytorch.org/whl/cu121
+    - torch==2.3.1+cu121
+    - recbole==1.2.0
