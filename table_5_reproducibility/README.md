@@ -63,6 +63,8 @@ make install-warprec MODE=gpu
 
 `MODE=gpu` selects the `_gpu.yml` variant of each YAML (CUDA-capable wheels); `MODE=cpu` selects the CPU-only variant.
 
+**Defaults.** If omitted, `MODE` is `gpu` and the env manager is auto-selected in the order `micromamba` → `mamba` → `conda` (the first one found on `PATH` or at a common install location such as `~/.local/bin/micromamba`). Override the env manager with `MAMBA=<binary>`, e.g. `make install MAMBA=conda`.
+
 ## Running the Pipeline
 
 The full pipeline - environment creation, data download, per-framework training, cross-framework evaluation, and table generation - is a single command:

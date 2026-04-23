@@ -14,12 +14,26 @@
 # not need to activate anything manually.
 #
 # Variables (override on the command line):
-#   MODE   = gpu | cpu            [default: gpu]
-#   MAMBA  = micromamba | mamba   [default: micromamba]
+#   MODE   = gpu | cpu                    [default: gpu]
+#   MAMBA  = micromamba | mamba | conda   [default: first found on PATH]
 # ================================================================
 
 MODE   ?= gpu
-MAMBA  ?= micromamba
+# Auto-detect an env manager. Order of preference:
+#   1. $MAMBA_EXE (exported by `micromamba shell init`)
+#   2. micromamba / mamba / conda on PATH
+#   3. common binary locations (micromamba's .bashrc hook does not run in
+#      make's non-interactive subshell, so PATH may not include ~/.local/bin)
+MAMBA  ?= $(shell \
+	if [ -n "$$MAMBA_EXE" ] && [ -x "$$MAMBA_EXE" ]; then echo "$$MAMBA_EXE"; exit 0; fi; \
+	for c in micromamba mamba conda; do \
+		command -v $$c >/dev/null 2>&1 && { echo $$c; exit 0; }; \
+	done; \
+	for p in $$HOME/.local/bin/micromamba $$HOME/bin/micromamba \
+	         $$HOME/micromamba/bin/micromamba /opt/micromamba/bin/micromamba \
+	         /usr/local/bin/micromamba; do \
+		[ -x "$$p" ] && { echo "$$p"; exit 0; }; \
+	done)
 PY     ?= python3
 
 # Colors — resolve through tput when stdout is a terminal; fall back to
@@ -51,6 +65,7 @@ RECBOLE_DIR := frameworks/recbole
 WARPREC_DIR := frameworks/warprec
 
 .PHONY: help all install install-elliot install-recbole install-warprec \
+        _check-mamba \
         download train-warprec train-elliot train-recbole \
         cross-eval cross-eval-elliot cross-eval-recbole cross-eval-warprec \
         stage-recbole-inputs aggregate \
@@ -67,33 +82,61 @@ help:
 	@printf '  If a step fails, rerun the same command — it resumes from where\n'
 	@printf '  it stopped. See $(CYAN)README.md$(RESET) for prerequisites and troubleshooting.\n\n'
 	@printf '  $(DIM)Individual targets (advanced):$(RESET)\n'
-	@printf '    $(DIM)install       create the 3 micromamba envs$(RESET)\n'
+	@printf '    $(DIM)install       create all 3 micromamba envs$(RESET)\n'
+	@printf '    $(DIM)install-<fw>  create one env (warprec | elliot | recbole)$(RESET)\n'
 	@printf '    $(DIM)download      fetch MovieLens-1M$(RESET)\n'
 	@printf '    $(DIM)train-<fw>    train one framework (warprec | elliot | recbole)$(RESET)\n'
 	@printf '    $(DIM)cross-eval    run the 6 cross-framework evaluations$(RESET)\n'
 	@printf '    $(DIM)aggregate     build table.md and table.tex$(RESET)\n'
 	@printf '    $(DIM)clean         remove generated artefacts$(RESET)\n'
 	@printf '    $(DIM)clean-envs    remove the 3 micromamba envs$(RESET)\n\n'
+	@printf '  $(DIM)Variables (override on the command line):$(RESET)\n'
+	@printf '    $(DIM)MODE   = gpu | cpu                    [default: gpu]$(RESET)\n'
+	@printf '    $(DIM)MAMBA  = micromamba | mamba | conda   [default: first found on PATH]$(RESET)\n'
+	@printf '    $(DIM)                                       currently: $(RESET)$(CYAN)$(MAMBA)$(RESET)\n\n'
 
 # ---------------------------------------------------------------
 # Env creation
 # ---------------------------------------------------------------
 install: install-elliot install-recbole install-warprec
 
-install-elliot:
-	@echo ">>> creating/updating $(ENV_ELLIOT) from $(ENV_YML_ELLIOT)"
-	@$(MAMBA) env list | grep -q " $(ENV_ELLIOT) " \
-		&& $(MAMBA) env update -n $(ENV_ELLIOT) -f $(ENV_YML_ELLIOT) --prune \
-		|| $(MAMBA) env create -n $(ENV_ELLIOT) -f $(ENV_YML_ELLIOT)
+_check-mamba:
+	@if [ -z "$(MAMBA)" ]; then \
+		echo "error: no env manager found (looked for micromamba, mamba, conda on PATH" >&2; \
+		echo "       and in common install locations; \$$MAMBA_EXE is also empty)." >&2; \
+		echo "       install micromamba (https://mamba.readthedocs.io/en/latest/installation/micromamba-installation.html)" >&2; \
+		echo "       or override with:  make install MAMBA=/path/to/binary" >&2; \
+		exit 1; \
+	fi
 
-install-recbole:
-	@echo ">>> creating/updating $(ENV_RECBOLE) from $(ENV_YML_RECBOLE)"
+# Elliot installs in 3 serial phases because torch_scatter / torch_sparse
+# are source-built and need `import torch` to succeed at build time — so
+# torch must land in its own pip call, before the PyG ecosystem. Versions
+# below track $(ENV_YML_ELLIOT) (keep in sync if the YAML changes).
+# --prune is intentionally omitted: torch & PyG are installed outside the
+# YAML, and --prune would delete them on every re-run.
+install-elliot: _check-mamba
+	@echo ">>> [elliot 1/3] base env from $(ENV_YML_ELLIOT) (using $(MAMBA))"
+	@$(MAMBA) env list | grep -q " $(ENV_ELLIOT) " \
+		&& $(MAMBA) env update -n $(ENV_ELLIOT) -f $(ENV_YML_ELLIOT) \
+		|| $(MAMBA) env create -n $(ENV_ELLIOT) -f $(ENV_YML_ELLIOT)
+	@echo ">>> [elliot 2/3] torch (required before torch_scatter / torch_sparse)"
+	$(RUN_ELLIOT) pip install torch==2.3.1
+	@echo ">>> [elliot 3/3] PyG ecosystem + Elliot upstream"
+	$(RUN_ELLIOT) pip install \
+		torch_scatter==2.1.2 \
+		torch_sparse==0.6.18 \
+		torch-geometric==2.6.1 \
+		git+https://github.com/sisinflab/elliot.git
+
+install-recbole: _check-mamba
+	@echo ">>> creating/updating $(ENV_RECBOLE) from $(ENV_YML_RECBOLE) (using $(MAMBA))"
 	@$(MAMBA) env list | grep -q " $(ENV_RECBOLE) " \
 		&& $(MAMBA) env update -n $(ENV_RECBOLE) -f $(ENV_YML_RECBOLE) --prune \
 		|| $(MAMBA) env create -n $(ENV_RECBOLE) -f $(ENV_YML_RECBOLE)
 
-install-warprec:
-	@echo ">>> creating/updating $(ENV_WARPREC) from $(ENV_YML_WARPREC)"
+install-warprec: _check-mamba
+	@echo ">>> creating/updating $(ENV_WARPREC) from $(ENV_YML_WARPREC) (using $(MAMBA))"
 	@$(MAMBA) env list | grep -q " $(ENV_WARPREC) " \
 		&& $(MAMBA) env update -n $(ENV_WARPREC) -f $(ENV_YML_WARPREC) --prune \
 		|| $(MAMBA) env create -n $(ENV_WARPREC) -f $(ENV_YML_WARPREC)

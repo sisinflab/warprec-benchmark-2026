@@ -11,8 +11,4 @@ dependencies:
   - setuptools=80.9.0
   - wheel=0.45.1
   - pip:
-    # CPU torch wheels (WarpRec itself pins torch>=2.7,<3; this overrides CUDA).
-    - --extra-index-url https://download.pytorch.org/whl/cpu
-    - torch==2.7.0
-    - torch-geometric==2.7.0
     - warprec==1.3.0
