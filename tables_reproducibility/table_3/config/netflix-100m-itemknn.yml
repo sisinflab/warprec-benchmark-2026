@@ -1,0 +1,44 @@
+reader:
+  loading_strategy: dataset
+  data_type: transaction
+  reading_method: local
+  local_path: /mnt/splinter-data/potito/datasets/netflix-prize-100m/ratings_processed.csv
+  rating_type: explicit
+  sep: ','
+  labels:
+    user_id_label: user_id
+    item_id_label: item_id
+    rating_label: rating
+    timestamp_label: timestamp
+writer:
+  dataset_name: Netflix100M-ItemKNN-Serial
+  writing_method: local
+  local_experiment_path: /mnt/splinter-data/potito/experiments/warprec-benchmark-2026/
+splitter:
+  test_splitting:
+    strategy: random_holdout
+    ratio: 0.1
+dashboard:
+  wandb:
+    enabled: False
+    team: your_wandb_team_here
+    project: warprec-benchmark-2026
+    group: Netflix100M-Serial
+    api_key: your_wandb_api_key_here
+    upload_checkpoints: False
+  codecarbon:
+    enabled: True
+    save_to_file: True
+    tracking_mode: process
+    output_dir: /mnt/splinter-data/potito/experiments/warprec-benchmark-2026/Netflix100M-ItemKNN-Serial/codecarbon/
+models:
+  ItemKNN:
+    k: [50, 100, 200, 500, 1000, 2000]
+    similarity: cosine
+evaluation:
+  top_k: [10]
+  metrics: [nDCG, Precision, Recall, HitRate, MAP]
+  validation_metric: nDCG@10
+  strategy: full
+general:
+  device: cuda
