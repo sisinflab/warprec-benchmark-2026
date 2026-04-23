@@ -2,7 +2,7 @@ reader:
   loading_strategy: dataset
   data_type: transaction
   reading_method: local
-  local_path: /mnt/splinter-data/potito/datasets/netflix-prize-100m/ratings_processed.csv
+  local_path: /home/paghilar/repositories/warprec-benchmark-2026/datasets/netflix-prize-100m/ratings_processed.csv
   rating_type: explicit
   sep: ','
   labels:
@@ -13,7 +13,7 @@ reader:
 writer:
   dataset_name: Netflix100M-NeuMF-Serial
   writing_method: local
-  local_experiment_path: /mnt/splinter-data/potito/experiments/warprec-benchmark-2026/
+  local_experiment_path: experiments/warprec-benchmark-2026/
 splitter:
   test_splitting:
     strategy: random_holdout
@@ -30,7 +30,7 @@ dashboard:
     enabled: True
     save_to_file: True
     tracking_mode: process
-    output_dir: /mnt/splinter-data/potito/experiments/warprec-benchmark-2026/Netflix100M-NeuMF-Serial/codecarbon/
+    output_dir: experiments/warprec-benchmark-2026/Netflix100M-NeuMF-Serial/codecarbon/
 models:
   NeuMF:
     optimization:
