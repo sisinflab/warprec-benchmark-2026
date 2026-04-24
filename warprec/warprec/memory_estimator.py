@@ -123,8 +123,11 @@ CALIBRATION = {
 
     # Allocator fragmentation — how much of the logical "freed" bytes the
     # OS still holds as resident. Applied as a fraction of the largest
-    # transient allocation peak during the trial.
+    # *small* transient allocation peak during the trial. Large allocations
+    # (> MMAP_THRESHOLD bytes below) are mmap'd by glibc and return pages
+    # to the OS cleanly on free, so they don't contribute to RSS drift.
     "fragmentation_retained_frac": 0.35,
+    "mmap_threshold_bytes": 128 * MIB,  # glibc default M_MMAP_THRESHOLD
 
     # sklearn.cosine_similarity + subsequent top-k filtering total peak as a
     # multiple of the dense output bytes. Captures: X sparse + X_norm sparse +
@@ -169,6 +172,20 @@ CALIBRATION = {
     # on Netflix-100M (3.6 GiB observed).
     "sequential_cached_history_bytes_per_interaction": 36,
     "sequential_cached_history_bytes_per_user": 56,
+
+    # LightGCN/NGCF use LGConv with default normalize=True: each forward
+    # calls gcn_norm() which creates a new SparseTensor (col [2·nnz] int64 +
+    # values [2·nnz] fp32 = 12 B/edge) that autograd saves for backward.
+    # Plus transient copies during torch_sparse.mul inside gcn_norm. The
+    # per-interaction VRAM workspace captures the full footprint across all
+    # layers, calibrated against LightGCN on Netflix-100M (~138 B/edge
+    # peak across forward/backward; n_layers contribution is embedded in
+    # the `graph_per_layer_factor` multiplier below).
+    "graph_spmm_workspace_per_interaction": 138,
+    # Extra N·d activation tensors per layer (saved embeddings_list +
+    # lightgcn_all + ego + alpha·embedding temp) counted as a multiplier of
+    # N·d·4 bytes. 5 captures (n_layers+3) for n_layers=2 baseline.
+    "graph_activation_tensor_count": 5,
 }
 
 
@@ -333,15 +350,17 @@ class ProcessState:
             self.vram_peak = max(self.vram_peak, self.vram_live)
 
     def free(self, report: StageReport, label: str, nbytes: int, device: str = "ram"):
-        """Free bytes. Accepts an optional `retain_frac` (not here — handled
-        globally via `fragmentation_retained_frac`)."""
+        """Free bytes. For RAM frees smaller than MMAP_THRESHOLD the bytes
+        are tracked in the fragmentation buffer (glibc arenas don't return
+        pages to the OS below that threshold). Larger frees are mmap-backed
+        and return cleanly."""
         nbytes = max(0, int(nbytes))
         if nbytes == 0:
             return
         report.events.append(StageEvent("free", label, device, nbytes))
         if device == "ram":
-            # Track the largest transient peak for fragmentation accounting.
-            self._fragmentation_buffer = max(self._fragmentation_buffer, nbytes)
+            if nbytes < CALIBRATION["mmap_threshold_bytes"]:
+                self._fragmentation_buffer = max(self._fragmentation_buffer, nbytes)
             self.ram_live = max(0, self.ram_live - nbytes)
         else:
             self.vram_live = max(0, self.vram_live - nbytes)
@@ -389,18 +408,20 @@ class ProcessState:
 class ModelMemory:
     name: str
     params_ram: int = 0
-    params_vram: int = 0
-    fit_peak_extra: int = 0        # transient extra during fit, above params
-    train_vram_peak: int = 0       # activations + grads during one batch
-    eval_vram_peak: int = 0        # activations during one eval batch
-    eval_ram_extra: int = 0        # extra RAM allocated lazily during eval
+    params_vram: int = 0            # learnable parameters (get grad + optim state)
+    buffers_vram: int = 0           # non-learnable persistent VRAM (e.g. adjacency,
+                                    # causal_mask) — alive from W3 onwards, no grad
+    fit_peak_extra: int = 0         # transient extra during fit/__init__, above params
+    train_vram_peak: int = 0        # activations + grads during one batch
+    eval_vram_peak: int = 0         # activations during one eval batch
+    eval_ram_extra: int = 0         # extra RAM allocated lazily during eval
     closed_form: bool = False
     has_optimizer: bool = True
     dtype_bytes: int = FP32
     notes: list[str] = field(default_factory=list)
 
     def optimizer_state_bytes(self) -> int:
-        """Adam keeps 2 buffers (m, v) same shape as params, same dtype."""
+        """Adam keeps 2 buffers (m, v) same shape as learnable params."""
         if not self.has_optimizer:
             return 0
         return 2 * max(self.params_vram, self.params_ram)
@@ -621,30 +642,79 @@ def _est_puresvd(ds: DatasetStats, hp: dict) -> ModelMemory:
 # ---------- graph (LightGCN / NGCF) ----------
 
 def _est_lightgcn(ds: DatasetStats, hp: dict) -> ModelMemory:
+    # LightGCN (lightgcn.py:57-93 + graph_utils.py + torch_geometric.nn.LGConv):
+    #   self.adj = SparseTensor(row, col, sparse_sizes=(N, N)) on VRAM
+    #       ^ N = n_users + n_items + 1 ; 2·nnz_train bidirectional edges
+    #   self.propagation_network = [LGConv(), LGConv(), ...] with
+    #       normalize=True (DEFAULT), so each forward calls gcn_norm() that
+    #       creates a new SparseTensor (col [2·nnz] int64 + values [2·nnz] fp32)
+    #       ≈ 12 B/edge, plus transient copies during torch_sparse.mul,
+    #       saved by autograd for backward.
+    #   Training: forward() holds embeddings_list = (n_layers+1) tensors
+    #       [N, d] × FP32 saved for backward.
+    #   Eval: predict() → propagate_embeddings() caches once, reuses for
+    #       subsequent batches; only einsum output per batch is new.
     d = int(hp.get("embedding_size", 64))
     n_layers = int(hp.get("n_layers", 3))
     batch = int(hp.get("batch_size", 1024))
-    # Params: user + item embeddings
+
+    # Adjacency is built from `interactions.get_sparse().tocoo()` where
+    # `interactions` is the TRAIN split (~90% of total for default 0.1
+    # test ratio).
+    n_train = int(ds.n_interactions * 0.9)
+
+    # Persistent learnable parameters (VRAM)
     params = _embedding(ds.n_users, d) + _embedding(_pad(ds.n_items), d)
-    # Adjacency (torch_geometric Data): edge_index [2, 2·nnz] int64 + edge_weight [2·nnz] fp32
-    adj = 2 * ds.n_interactions * INT64 + 2 * ds.n_interactions * FP32
-    # Training forward: all-embedding stack [(n_users+n_items), d] × (n_layers+1)
-    N = ds.n_users + ds.n_items
-    all_emb_stack = N * d * FP32 * (n_layers + 1)
-    # Backward doubles it (saved activations). Plus per-batch BPR-like loss.
-    train = 2 * all_emb_stack + 3 * batch * d * FP32 * 2
-    # Eval: bilinear scoring on all items, similar to BPR
-    eval_peak = _bilinear_eval_vram(ds, d, hp)
+
+    # Adjacency SparseTensor on VRAM after adj.to(device). CSR-like storage:
+    # rowptr [N+1] int64 + col [2·n_train] int64 (no values — unweighted).
+    N = ds.n_users + ds.n_items + 1
+    adj_vram = (N + 1) * INT64 + 2 * n_train * INT64
+
+    # Adjacency construction in __init__ allocates large transient numpy/torch
+    # arrays on RAM before the SparseTensor is moved to GPU (~6 GiB peak for
+    # Netflix-100M). These are numpy/torch tensors > mmap_threshold so the
+    # OS reclaims their pages cleanly on __init__ exit; they do NOT appear
+    # in the end-of-trial RSS measurement. We note the figure for awareness
+    # but don't simulate it as a watermark event.
+    adj_init_ram_transient = 0
+    adj_init_ram_transient_peak = (
+        2 * n_train * INT32                   # row numpy (int32)
+        + 2 * n_train * INT32                 # col numpy
+        + 2 * 2 * n_train * INT32             # edge_index_np vstack
+        + 2 * 2 * n_train * INT64             # torch.tensor(int64) copy
+    )
+
+    # Training peak VRAM.
+    gcn_norm_overhead = n_train * CALIBRATION["graph_spmm_workspace_per_interaction"]
+    activation_stack = CALIBRATION["graph_activation_tensor_count"] * N * d * FP32
+    cublas = 200 * MIB
+    train = gcn_norm_overhead + activation_stack + cublas
+
+    # Evaluation peak VRAM: cached user_all/item_all on GPU + per-batch
+    # einsum score tensor + evaluator metric tensors.
+    eval_bs = int(hp.get("eval_batch_size", 1024))
+    cached_prop_vram = N * d * FP32
+    einsum_vram = eval_bs * ds.n_items * FP32
+    eval_metrics_vram = 3 * eval_bs * ds.n_items * FP32
+    eval_peak = cached_prop_vram + einsum_vram + eval_metrics_vram + cublas
+
     return ModelMemory(
         name="LightGCN",
-        params_ram=adj,           # adjacency lives in RAM (usually)
-        params_vram=params,
+        params_vram=params,                       # learnable → grad + optim
+        buffers_vram=adj_vram,                    # non-learnable (adj), no grad
+        fit_peak_extra=adj_init_ram_transient,    # RAM transient during __init__
         train_vram_peak=train,
         eval_vram_peak=eval_peak,
         notes=[
-            f"LightGCN: params (VRAM) = {_human(params)}",
-            f"adjacency (RAM, edge_index + weight): {_human(adj)}",
-            f"all-embedding stack peak (n_layers={n_layers}): {_human(all_emb_stack)}",
+            f"LightGCN learnable params (VRAM): {_human(params)}  (d={d})",
+            f"adjacency SparseTensor (VRAM, buffer): {_human(adj_vram)}  "
+            f"(2·n_train={2*n_train:,} bidirectional edges)",
+            f"gcn_norm saved workspace (VRAM): {_human(gcn_norm_overhead)}  "
+            f"({CALIBRATION['graph_spmm_workspace_per_interaction']} B/edge × {n_train:,})",
+            f"activation stack (VRAM, n_layers={n_layers}): {_human(activation_stack)}",
+            f"adj __init__ transient RAM peak (mmap, not in end-RSS): "
+            f"{_human(adj_init_ram_transient_peak)}",
         ],
     )
 
@@ -971,11 +1041,25 @@ def worker_stage_model_init(worker: ProcessState, ds: DatasetStats,
         if transient > 0:
             worker.free(rpt, "fit-time transient freed", transient)
     else:
-        worker.alloc(rpt, "model.parameters (torch, cpu)", mm.params_vram)
+        # For iterative models, fit_peak_extra captures transient RAM during
+        # __init__ (e.g. LightGCN building edge_index via numpy before moving
+        # the SparseTensor to GPU).
+        if mm.fit_peak_extra > 0:
+            worker.alloc(rpt, "__init__ transient (adjacency construction)",
+                         mm.fit_peak_extra)
+            worker.free(rpt, "__init__ transient freed", mm.fit_peak_extra)
         if use_gpu:
-            # model.to(device): params leave RAM, arrive on VRAM
-            worker.free(rpt, "model.parameters moved off RAM", mm.params_vram)
+            # nn.Module is constructed on CPU then `.to(device)` moves params
+            # to GPU. We model the net effect — params end up on VRAM with no
+            # lasting RAM footprint.
             worker.alloc(rpt, "model.parameters (VRAM)", mm.params_vram, device="vram")
+            if mm.buffers_vram > 0:
+                worker.alloc(rpt, "model.buffers (VRAM, non-learnable)",
+                             mm.buffers_vram, device="vram")
+        else:
+            worker.alloc(rpt, "model.parameters (RAM, cpu mode)", mm.params_vram)
+            if mm.buffers_vram > 0:
+                worker.alloc(rpt, "model.buffers (RAM, cpu mode)", mm.buffers_vram)
     worker.end_stage(rpt)
     return rpt
 
