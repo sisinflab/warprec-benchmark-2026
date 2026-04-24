@@ -1,4 +1,4 @@
-name: warprec
+name: table_5_reproducibility_warprec
 channels:
   - conda-forge
   - nvidia
