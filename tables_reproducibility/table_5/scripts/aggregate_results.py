@@ -77,7 +77,7 @@ def _render_latex(cells: dict[tuple[str, str, str], dict[str, str]]) -> str:
 
     lines: list[str] = []
     lines.append(r"\begin{table}")
-    lines.append(r"\caption{Cross-framework performance evaluation with a cutoff$@10$ for ItemKNN and LightGCN on MovieLens-1M.}")
+    lines.append(r"\caption{Cross-framework performance evaluation with a cutoff$@10$ for ItemKNN and LightGCN on MovieLens-1M on epoch $1$.}")
     lines.append(r"\centering")
     lines.append(r"\footnotesize")
     lines.append(r"    \renewcommand{\arraystretch}{0.85}")

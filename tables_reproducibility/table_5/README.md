@@ -17,7 +17,7 @@ Each framework is installed into its own isolated micromamba environment. The Ma
 ```
 table_5_reproducibility/
 ├── Makefile                  # central driver; run `make help`
-├── environments/             # 6 YAMLs (framework × cpu|gpu)
+├── environments/             # 3 YAMLs, one per framework (GPU, CUDA 12.x)
 ├── frameworks/               # per-framework assets
 │   ├── elliot/               # 1 training + 4 cross-eval YAMLs
 │   ├── recbole/              # training + cross-eval Python entry points
@@ -35,7 +35,7 @@ Before running the pipeline, ensure that:
 1. **Micromamba** is installed and on `PATH`
 2. **`make`** and **`git`** are available
 3. At least **3 GB of free disk** is available for environments, the dataset, and intermediate outputs
-4. (GPU only) an **NVIDIA GPU with CUDA 12.6 drivers** is attached - this matches the stack used to produce the paper's numbers
+4. An **NVIDIA GPU with CUDA 12.6 drivers** is attached — this matches the stack used to produce the paper's numbers
 
 ## Environment Setup
 
@@ -43,35 +43,32 @@ Each framework requires its own isolated environment, selected via a YAML under 
 
 | Framework | Python | Deep learning    | Ray      | Install source                                 |
 |-----------|--------|------------------|----------|-------------------------------------------------|
-| Elliot    | 3.8    | TensorFlow 2.13  | -        | `git+https://github.com/sisinflab/elliot.git`  |
+| Elliot    | 3.8    | PyTorch 2.3.1    | -        | `git+https://github.com/sisinflab/elliot.git`  |
 | RecBole   | 3.9    | PyTorch >= 2.0   | <= 2.6.3 | `pip install recbole==1.2.0`                   |
 | WarpRec   | 3.12   | PyTorch 2.7.0    | >= 2.54  | `pip install warprec==1.3.0`                   |
 
 The Makefile creates all three in a single step:
 
 ```bash
-make install MODE=gpu      # or MODE=cpu
+make install
 ```
 
 Individual envs can also be installed on their own:
 
 ```bash
-make install-elliot MODE=gpu
-make install-recbole MODE=gpu
-make install-warprec MODE=gpu
+make install-elliot
+make install-recbole
+make install-warprec
 ```
 
-`MODE=gpu` selects the `_gpu.yml` variant of each YAML (CUDA-capable wheels); `MODE=cpu` selects the CPU-only variant.
-
-**Defaults.** If omitted, `MODE` is `gpu` and the env manager is auto-selected in the order `micromamba` → `mamba` → `conda` (the first one found on `PATH` or at a common install location such as `~/.local/bin/micromamba`). Override the env manager with `MAMBA=<binary>`, e.g. `make install MAMBA=conda`.
+**Defaults.** The env manager is auto-selected in the order `micromamba` → `mamba` → `conda` (the first one found on `PATH` or at a common install location such as `~/.local/bin/micromamba`). Override with `MAMBA=<binary>`, e.g. `make install MAMBA=conda`.
 
 ## Running the Pipeline
 
 The full pipeline - environment creation, data download, per-framework training, cross-framework evaluation, and table generation - is a single command:
 
 ```bash
-make all MODE=gpu          # ~10 min on an A100
-make all MODE=cpu          # ~45 min on a modern laptop
+make all          # ~10 min on an A100
 ```
 
 `make all` chains six idempotent stages. Each stage can also be invoked in isolation; re-running after a partial failure skips completed work.
@@ -112,9 +109,9 @@ make help                  # list targets, pipeline flow, and current flags
 
 ## Metric Agreement Expectations
 
-Once the top-K list is fixed, **nDCG**, **Precision**, **Recall**, **MRR**, and **MAP** are framework-independent and should match the paper's values to the last reported decimal on GPU. Minor numerical drift on LightGCN is expected on CPU.
+Once the top-K list is fixed, **Precision**, **Recall**, **MRR**, and **Gini** are framework-independent and should match the paper's values to the last reported decimal on GPU.
 
-**Gini** and **ShannonEntropy** are defined differently by each framework (normalisation and aggregation axis vary), so those columns diverge across evaluation frameworks by design. The paper body calls this out explicitly; agreement on the first five metrics with disagreement on the last two is the expected signal.
+**nDCG** and **MAP** diverge across evaluators by design (see the paper's cross-framework metric audit): RecBole uses binary relevance for nDCG, and Elliot normalises MAP by the absolute cutoff while RecBole and WarpRec use `min(|R_u|, k)`. Elliot reports Gini *Purity*, which we convert to Gini *Inequality* to keep the Gini column comparable. Agreement on Precision, Recall, MRR, and Gini with disagreement on nDCG/MAP across the three evaluators is the expected signal.
 
 ## Troubleshooting
 

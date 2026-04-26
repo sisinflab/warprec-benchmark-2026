@@ -92,6 +92,7 @@ def _gib(nbytes: float) -> float:
 #   ItemKNN (6 trials): ram≈10.89 GiB, vram≈305 MiB
 #   EASE    (6 trials): ram≈12.12 GiB, vram≈425 MiB
 #   NeuMF   (2 trials): ram≈11.45 GiB, vram∈{8.00, 11.49} GiB
+#   LightGCN (6 trials): ram≈11.40 GiB, vram∈{14.48, 18.87} GiB
 #
 # When adding new ground-truth data, touch only this block.
 
@@ -173,19 +174,18 @@ CALIBRATION = {
     "sequential_cached_history_bytes_per_interaction": 36,
     "sequential_cached_history_bytes_per_user": 56,
 
-    # LightGCN/NGCF use LGConv with default normalize=True: each forward
-    # calls gcn_norm() which creates a new SparseTensor (col [2·nnz] int64 +
-    # values [2·nnz] fp32 = 12 B/edge) that autograd saves for backward.
-    # Plus transient copies during torch_sparse.mul inside gcn_norm. The
-    # per-interaction VRAM workspace captures the full footprint across all
-    # layers, calibrated against LightGCN on Netflix-100M (~138 B/edge
-    # peak across forward/backward; n_layers contribution is embedded in
-    # the `graph_per_layer_factor` multiplier below).
-    "graph_spmm_workspace_per_interaction": 138,
-    # Extra N·d activation tensors per layer (saved embeddings_list +
-    # lightgcn_all + ego + alpha·embedding temp) counted as a multiplier of
-    # N·d·4 bytes. 5 captures (n_layers+3) for n_layers=2 baseline.
-    "graph_activation_tensor_count": 5,
+    # LightGCN/NGCF use LGConv with default normalize=True. Each forward calls
+    # gcn_norm(), which creates a SparseTensor saved for backward, plus
+    # transient copies during torch_sparse.mul. The first two layers share the
+    # base normalization/transient footprint below; each additional LGConv
+    # layer adds another saved SparseTensor + torch_sparse.mul workspace.
+    "graph_spmm_workspace_base_per_interaction": 143,
+    "graph_spmm_workspace_extra_layer_per_interaction": 24,
+
+    # Extra N·d activation tensors saved by LightGCN propagation. Calibration
+    # from the completed Netflix-100M LightGCN sweep shows one additional
+    # N·d tensor per layer beyond the first.
+    "graph_activation_tensor_base_count": 1,
 }
 
 
@@ -686,8 +686,18 @@ def _est_lightgcn(ds: DatasetStats, hp: dict) -> ModelMemory:
     )
 
     # Training peak VRAM.
-    gcn_norm_overhead = n_train * CALIBRATION["graph_spmm_workspace_per_interaction"]
-    activation_stack = CALIBRATION["graph_activation_tensor_count"] * N * d * FP32
+    extra_layers = max(0, n_layers - 2)
+    extra_workspace = CALIBRATION["graph_spmm_workspace_extra_layer_per_interaction"]
+    graph_workspace_per_interaction = (
+        CALIBRATION["graph_spmm_workspace_base_per_interaction"]
+        + extra_layers * extra_workspace
+    )
+    activation_tensor_count = (
+        CALIBRATION["graph_activation_tensor_base_count"]
+        + max(0, n_layers - 2)
+    )
+    gcn_norm_overhead = n_train * graph_workspace_per_interaction
+    activation_stack = activation_tensor_count * N * d * FP32
     cublas = 200 * MIB
     train = gcn_norm_overhead + activation_stack + cublas
 
@@ -711,8 +721,10 @@ def _est_lightgcn(ds: DatasetStats, hp: dict) -> ModelMemory:
             f"adjacency SparseTensor (VRAM, buffer): {_human(adj_vram)}  "
             f"(2·n_train={2*n_train:,} bidirectional edges)",
             f"gcn_norm saved workspace (VRAM): {_human(gcn_norm_overhead)}  "
-            f"({CALIBRATION['graph_spmm_workspace_per_interaction']} B/edge × {n_train:,})",
-            f"activation stack (VRAM, n_layers={n_layers}): {_human(activation_stack)}",
+            f"({graph_workspace_per_interaction} B/edge × {n_train:,}; "
+            f"extra_layers={extra_layers})",
+            f"activation stack (VRAM, n_layers={n_layers}, "
+            f"tensors={activation_tensor_count}): {_human(activation_stack)}",
             f"adj __init__ transient RAM peak (mmap, not in end-RSS): "
             f"{_human(adj_init_ram_transient_peak)}",
         ],

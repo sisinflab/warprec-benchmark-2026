@@ -5,8 +5,8 @@
 # LightGCN on MovieLens-1M) across Elliot, RecBole, and WarpRec.
 #
 #   make help            # list targets
-#   make all             # full pipeline (~30-60 min CPU, <10 min GPU)
-#   make install MODE=gpu
+#   make all             # full pipeline (<10 min on an A100)
+#   make install
 #   make clean           # remove reproduced artefacts (keeps envs)
 #
 # Three isolated micromamba environments are created; each framework is
@@ -14,11 +14,9 @@
 # not need to activate anything manually.
 #
 # Variables (override on the command line):
-#   MODE   = gpu | cpu                    [default: gpu]
 #   MAMBA  = micromamba | mamba | conda   [default: first found on PATH]
 # ================================================================
 
-MODE   ?= gpu
 # Auto-detect an env manager. Order of preference:
 #   1. $MAMBA_EXE (exported by `micromamba shell init`)
 #   2. micromamba / mamba / conda on PATH
@@ -46,14 +44,13 @@ GREEN  := $(shell tput setaf 2 2>/dev/null)
 YELLOW := $(shell tput setaf 3 2>/dev/null)
 MAGENTA:= $(shell tput setaf 5 2>/dev/null)
 
-# Env names (stable across MODE — only the YAML used to create them changes).
 ENV_ELLIOT  := table_5_reproducibility_elliot
 ENV_RECBOLE := table_5_reproducibility_recbole
 ENV_WARPREC := table_5_reproducibility_warprec
 
-ENV_YML_ELLIOT  := environments/elliot_$(MODE).yml
-ENV_YML_RECBOLE := environments/recbole_$(MODE).yml
-ENV_YML_WARPREC := environments/warprec_$(MODE).yml
+ENV_YML_ELLIOT  := environments/elliot.yml
+ENV_YML_RECBOLE := environments/recbole.yml
+ENV_YML_WARPREC := environments/warprec.yml
 
 # Run-inside-env shortcuts.
 RUN_ELLIOT  = $(MAMBA) run -n $(ENV_ELLIOT)
@@ -76,8 +73,7 @@ help:
 	@printf '\n  $(BOLD)WarpRec · Table 5 reproducibility$(RESET)\n\n'
 	@printf '  Regenerates Table 5 (ItemKNN & LightGCN on MovieLens-1M across\n'
 	@printf '  Elliot, RecBole, WarpRec). One command, end to end:\n\n'
-	@printf '      $(GREEN)make all MODE=gpu$(RESET)   $(DIM)# NVIDIA GPU with CUDA 12.6$(RESET)\n'
-	@printf '      $(GREEN)make all MODE=cpu$(RESET)   $(DIM)# no GPU required (slower)$(RESET)\n\n'
+	@printf '      $(GREEN)make all$(RESET)   $(DIM)# requires an NVIDIA GPU with CUDA 12.6$(RESET)\n\n'
 	@printf '  Output: $(CYAN)table.md$(RESET) and $(CYAN)table.tex$(RESET) (the paper file, overwritten).\n\n'
 	@printf '  If a step fails, rerun the same command — it resumes from where\n'
 	@printf '  it stopped. See $(CYAN)README.md$(RESET) for prerequisites and troubleshooting.\n\n'
@@ -91,7 +87,6 @@ help:
 	@printf '    $(DIM)clean         remove generated artefacts$(RESET)\n'
 	@printf '    $(DIM)clean-envs    remove the 3 micromamba envs$(RESET)\n\n'
 	@printf '  $(DIM)Variables (override on the command line):$(RESET)\n'
-	@printf '    $(DIM)MODE   = gpu | cpu                    [default: gpu]$(RESET)\n'
 	@printf '    $(DIM)MAMBA  = micromamba | mamba | conda   [default: first found on PATH]$(RESET)\n'
 	@printf '    $(DIM)                                       currently: $(RESET)$(CYAN)$(MAMBA)$(RESET)\n\n'
 
