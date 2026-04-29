@@ -1,0 +1,42 @@
+reader:
+  loading_strategy: dataset
+  data_type: transaction
+  reading_method: local
+  local_path: datasets/movielens.csv
+  rating_type: explicit
+  sep: ","
+writer:
+  dataset_name: MovieLens1M
+  writing_method: local
+  local_experiment_path: experiment/
+splitter:
+  test_splitting:
+    strategy: temporal_leave_k_out
+    k: 1
+models:
+  SASRec:
+    meta:
+      save_model: True
+    optimization:
+      gpu_per_trial: 0.1
+      cpu_per_trial: 4
+    embedding_size: 128
+    n_layers: 2
+    n_heads: 8
+    inner_size: 512
+    dropout_prob: 0.1
+    attn_dropout_prob: 0.1
+    reg_weight: 0.001
+    weight_decay: 0.0001
+    batch_size: 8192
+    epochs: 10
+    learning_rate: 0.001
+    neg_samples: 2
+    max_seq_len: 10
+evaluation:
+  top_k: [10]
+  metrics: [nDCG, Precision, Recall]
+  strategy: sampled
+  num_negatives: 99
+general:
+  device: cuda
