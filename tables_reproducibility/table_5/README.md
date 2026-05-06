@@ -1,0 +1,187 @@
+# Table 5 — Cross-Framework Evaluation
+
+Reproduces Table 5 of the paper: cross-framework evaluation of **ItemKNN** and
+**LightGCN** on **MovieLens-1M** at **cutoff @ 10**, trained for exactly **1
+epoch** (LightGCN) / single fit (ItemKNN), measured with each framework's own
+metric implementations.
+
+The table has 18 cells (9 per model). Each cell is the result of training a
+model with one framework and scoring its top-10 recommendations with another
+framework's evaluator.
+
+## Layout
+
+```
+table_5/
+├── README.md                    # this file
+├── Makefile                     # one-command driver
+├── environments/                # 3 conda env YAMLs (warprec, recbole, elliot)
+├── data/
+│   ├── raw/movielens.csv        # MovieLens-1M
+│   └── split/{train,test}.tsv   # produced by WarpRec
+├── frameworks/
+│   ├── warprec/                 # WarpRec configs (1 train + 4 cross-eval YAMLs)
+│   ├── elliot/                  # Elliot configs (1 train + 4 cross-eval YAMLs)
+│   └── recbole/                 # RecBole train + external-recs evaluator scripts
+├── scripts/                     # orchestration helpers (export, collect, aggregate)
+└── results/                     # all intermediate + final artefacts
+    ├── experiment/              # WarpRec writer outputs
+    ├── elliot_runs/             # Elliot result dirs
+    ├── recbole_runs/            # RecBole logs, recs, metrics
+    ├── recs/<fw>/<model>.tsv    # canonical 3-col TSV (uid, iid, score), no header
+    ├── metrics/                 # 9 canonical CSVs (one per (train, eval) cell)
+    ├── table.md                 # reproduced table (Markdown)
+    └── table.tex                # reproduced table (LaTeX)
+```
+
+## Prerequisites
+
+* NVIDIA GPU (with CUDA).
+* Conda flavour: `micromamba`, `mamba`, or `conda` (priority order). The
+  Makefile auto-detects it.
+
+## One-shot reproduction
+
+```bash
+make all
+```
+
+This runs (in order):
+1. `make install`             — creates the 3 conda envs.
+2. `make train-warprec`       — WarpRec trains both models, generates the
+                                 canonical temporal-holdout split (90/10),
+                                 saves recs to `results/recs/warprec/`.
+3. `make train-elliot`        — Elliot trains both models on the canonical
+                                 split, recs in `results/recs/elliot/`.
+4. `make train-recbole`       — RecBole trains both models on the canonical
+                                 split, recs in `results/recs/recbole/`.
+5. `make cross-eval`          — 6 cross-framework evaluations (each
+                                 framework scores the other two trainers'
+                                 recs with its own metrics).
+6. `make aggregate`           — assembles `results/table.md` +
+                                 `results/table.tex`.
+
+## Stage-by-stage commands
+
+```bash
+make install                  # one-time env setup
+make train-warprec            # also produces data/split/{train,test}.tsv
+make train-elliot
+make train-recbole
+make cross-eval               # = cross-eval-elliot + cross-eval-recbole + cross-eval-warprec
+make aggregate                # writes results/table.md and results/table.tex
+make clean                    # remove generated artefacts (keeps envs + raw data)
+make clean-envs               # remove the 3 conda envs
+```
+
+If you prefer raw commands without Make:
+
+```bash
+$CONDA_EXE run -n table_5_reproducibility_warprec \
+  python -m warprec.run -c frameworks/warprec/train.yml -p train
+$CONDA_EXE run -n table_5_reproducibility_warprec \
+  python scripts/export_split.py
+$CONDA_EXE run -n table_5_reproducibility_warprec \
+  python scripts/collect_recs.py warprec
+
+$CONDA_EXE run -n table_5_reproducibility_elliot \
+  python scripts/run_elliot.py frameworks/elliot/train.yml
+$CONDA_EXE run -n table_5_reproducibility_elliot \
+  python scripts/collect_recs.py elliot
+
+$CONDA_EXE run -n table_5_reproducibility_recbole \
+  python frameworks/recbole/run_experiment.py
+$CONDA_EXE run -n table_5_reproducibility_recbole \
+  python scripts/collect_recs.py recbole
+
+# Cross-evaluation (6 runs)
+$CONDA_EXE run -n table_5_reproducibility_elliot \
+  python scripts/run_elliot.py frameworks/elliot/eval_recbole_itemknn.yml
+# ...repeat for the other 3 Elliot eval YAMLs
+$CONDA_EXE run -n table_5_reproducibility_recbole \
+  python frameworks/recbole/evaluate_external_recs.py
+$CONDA_EXE run -n table_5_reproducibility_warprec \
+  python -m warprec.run -c frameworks/warprec/eval_elliot_itemknn.yml -p eval
+# ...repeat for the other 3 WarpRec eval YAMLs
+
+# Aggregate
+python scripts/aggregate_results.py
+```
+
+## Hyperparameters
+
+| Model    | Hyperparameters |
+|----------|-----------------|
+| ItemKNN  | k = 10, similarity = cosine |
+| LightGCN | embedding_size = 16, n_layers = 2, reg_weight = 0.001, batch_size = 2048, epochs = 1, learning_rate = 0.001 |
+
+## Split
+
+* Strategy: `temporal_holdout`
+* Test ratio: 0.1 (90/10 train/test, no validation set)
+* Generated by WarpRec; Elliot and RecBole consume the same
+  files at `data/split/{train,test}.tsv`.
+
+## How cross-evaluation works
+
+* **Elliot evaluator** uses Elliot's built-in `ProxyRecommender`: feed a recs
+  TSV via `models.ProxyRecommender.path` and Elliot computes its native
+  metrics on it (see `frameworks/elliot/eval_*.yml`).
+* **WarpRec evaluator** uses WarpRec's built-in `ProxyRecommender`: same
+  idea, different config key (`models.ProxyRecommender.recommendation_file`),
+  see `frameworks/warprec/eval_*.yml`.
+* **RecBole evaluator** has no built-in equivalent, so
+  `frameworks/recbole/evaluate_external_recs.py` builds a `DataStruct` with
+  `rec.items` + `rec.topk` from each external recs file and calls
+  `Evaluator.evaluate(struct)` directly — this uses RecBole's native metric
+  implementations without retraining.
+
+All three evaluators read the same canonical TSV at
+`results/recs/<framework>/<model>.tsv` (3 columns: user_id, item_id, score;
+no header).
+
+## Outputs
+
+After `make all` completes:
+
+* `results/table.md` — Markdown rendering of the 18-cell table.
+* `results/table.tex` — LaTeX rendering matching the paper layout.
+* `results/metrics/train_<a>_eval_<b>.csv` — 9 canonical CSVs.
+* `results/recs/<fw>/<model>.tsv` — 6 canonical recs files.
+* `results/{experiment,elliot_runs,recbole_runs}/` — full per-framework
+  runtime artefacts (logs, checkpoints, native metric outputs).
+
+## Reproduced table
+
+Generated by `scripts/aggregate_results.py` from the 9 canonical CSVs.
+
+<!-- BEGIN reproduced table -->
+| Model    | Train   | Eval    | nDCG   | Precis. | Recall | MRR    | MAP    | Gini   |
+|----------|---------|---------|--------|---------|--------|--------|--------|--------|
+| ItemKNN  | Elliot  | Elliot  | 0.0808 | 0.0733  | 0.0723 | 0.1828 | 0.0815 | 0.9133 |
+| ItemKNN  | Elliot  | RecBole | 0.0932 | 0.0733  | 0.0723 | 0.1828 | 0.0434 | 0.9130 |
+| ItemKNN  | Elliot  | WarpRec | 0.0808 | 0.0733  | 0.0723 | 0.1828 | 0.0434 | 0.9133 |
+| ItemKNN  | RecBole | Elliot  | 0.0724 | 0.0692  | 0.0695 | 0.1760 | 0.0767 | 0.9045 |
+| ItemKNN  | RecBole | RecBole | 0.0884 | 0.0692  | 0.0695 | 0.1760 | 0.0406 | 0.9043 |
+| ItemKNN  | RecBole | WarpRec | 0.0724 | 0.0692  | 0.0695 | 0.1760 | 0.0406 | 0.9045 |
+| ItemKNN  | WarpRec | Elliot  | 0.0825 | 0.0764  | 0.0700 | 0.1880 | 0.0852 | 0.9686 |
+| ItemKNN  | WarpRec | RecBole | 0.0949 | 0.0764  | 0.0700 | 0.1880 | 0.0438 | 0.9684 |
+| ItemKNN  | WarpRec | WarpRec | 0.0825 | 0.0764  | 0.0700 | 0.1880 | 0.0438 | 0.9686 |
+| LightGCN | Elliot  | Elliot  | 0.0536 | 0.0553  | 0.0374 | 0.1356 | 0.0623 | 0.9939 |
+| LightGCN | Elliot  | RecBole | 0.0646 | 0.0553  | 0.0374 | 0.1356 | 0.0294 | 0.9936 |
+| LightGCN | Elliot  | WarpRec | 0.0536 | 0.0553  | 0.0374 | 0.1356 | 0.0294 | 0.9939 |
+| LightGCN | RecBole | Elliot  | 0.0542 | 0.0561  | 0.0380 | 0.1364 | 0.0628 | 0.9938 |
+| LightGCN | RecBole | RecBole | 0.0653 | 0.0561  | 0.0380 | 0.1364 | 0.0297 | 0.9935 |
+| LightGCN | RecBole | WarpRec | 0.0542 | 0.0561  | 0.0380 | 0.1364 | 0.0297 | 0.9938 |
+| LightGCN | WarpRec | Elliot  | 0.0556 | 0.0573  | 0.0393 | 0.1387 | 0.0639 | 0.9937 |
+| LightGCN | WarpRec | RecBole | 0.0667 | 0.0573  | 0.0393 | 0.1387 | 0.0305 | 0.9934 |
+| LightGCN | WarpRec | WarpRec | 0.0556 | 0.0573  | 0.0393 | 0.1387 | 0.0305 | 0.9937 |
+<!-- END reproduced table -->
+
+### Gini convention
+
+Elliot reports Gini as a **concentration index** (low = diverse). WarpRec,
+RecBole, and the paper use the **diversity index** (high = diverse, ≈ 1 −
+concentration). [`scripts/collect_metrics.py`](scripts/collect_metrics.py)
+flips Elliot's Gini with `1 - elliot_gini` so all three eval columns are
+directly comparable.

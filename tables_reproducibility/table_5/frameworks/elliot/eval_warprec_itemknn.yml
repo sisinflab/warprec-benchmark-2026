@@ -1,0 +1,19 @@
+experiment:
+  dataset: ElliotWarpRecItemKNNRepr
+  data_config:
+    strategy: fixed
+    train_path: data/split/train.tsv
+    test_path: data/split/test.tsv
+  path_output_rec_result: results/elliot_runs/{0}/recs/
+  path_output_rec_weight: results/elliot_runs/{0}/weights/
+  path_output_rec_performance: results/elliot_runs/{0}/performance/
+  top_k: 10
+  evaluation:
+    cutoffs: [10]
+    simple_metrics: [nDCG, Precision, Recall, MRR, MAP, Gini, SEntropy]
+  gpu: 0
+  models:
+    ProxyRecommender:
+      meta:
+        save_recs: True
+      path: results/recs/warprec/ItemKNN.tsv

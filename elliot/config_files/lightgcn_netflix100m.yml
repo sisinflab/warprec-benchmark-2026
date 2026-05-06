@@ -1,0 +1,24 @@
+experiment:
+  dataset: netflix-prize-100m
+  backend: pytorch
+  data_config:
+    strategy: dataset
+    dataset_path: ../../dataset/netflix-prize-100m/ratings.tsv
+  splitting:
+    test_splitting:
+        strategy: random_subsampling
+        test_ratio: 0.1
+  top_k: 10
+  evaluation:
+    cutoffs: [10]
+    simple_metrics: [nDCG,Precision,Recall,HR,MAP]
+  external_models_path: ../external/models/__init__.py
+  gpu: 0
+  models:
+    external.LightGCN:
+      lr: 0.001
+      epochs: 2
+      factors: [64, 128, 256]
+      batch_size: 8192
+      l_w: 0.001
+      n_layers: [2, 3]

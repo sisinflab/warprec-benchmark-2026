@@ -1,0 +1,17 @@
+name: cornac
+channels:
+  - pytorch
+  - nvidia
+dependencies:
+  - python=3.9
+  - setuptools>=42
+  - wheel
+  - Cython>=0.29.21
+  - numpy<2.0.0
+  - scipy
+  - powerlaw
+  - tqdm
+  - pytorch==2.5.1
+  - torchvision==0.20.1
+  - torchaudio==2.5.1
+  - pytorch-cuda=12.4
